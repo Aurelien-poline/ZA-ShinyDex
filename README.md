@@ -1,61 +1,57 @@
-# Legends ZA Shiny Dex
+# 🌟 Legends ZA Shiny Dex
 
-Un traqueur de collection complet pour **Pokémon Légendes : Z-A**, conçu pour suivre votre progression de capture Shiny et Shalpha à travers les différentes Extradimensions.
+A professional-grade collection manager and **Hyperspace Tracker** designed for the release of *Pokémon Legends: Z-A*. This interactive web application helps you track your progress towards a complete Shiny and Shalpha living dex.
 
-![Shiny Dex Preview](public/AppPreview.png)
+## ✨ Features
 
-## 🚀 Fonctionnalités
+*   **🌍 Fully Multilingual**: Support for **English**, **Japanese**, and **French** with real-time switching.
+*   **🔍 Advanced Search**: Strict precision search for exact matches with a fuzzy fallback for typos. Search works across all languages simultaneously.
+*   **📊 Hyperspace Dashboard**: A dedicated real-time tracker for every Hyperspace zone (Levels 1★ to 5★), showing exactly how many Shiny and Shalpha specimens are still missing.
+*   **🔒 Official Logic**: 
+    *   **Shiny-Locked**: Legendary and Mythical Pokémon are permanently locked with a security icon.
+    *   **Alpha-Locked**: Specimens only available in "Special 5" zones have Shalpha status disabled automatically.
+*   **⚡ High Performance**: Built with Next.js 16 and Prisma for instant updates and sleek animations.
+*   **🎨 Dynamic Sprites**: Pokémon sprites automatically switch to their Shiny versions when marked as caught.
 
-- **Base de données complète** : 390 espèces répertoriées avec types officiels (via PokéAPI).
-- **Localisations précises** : Données extraites de PokéBip pour chaque niveau d'Extradimension (1★ à 5★).
-- **Suivi Shalpha & Shiny** : Marquez vos captures en un clic. La logique Shalpha inclut automatiquement le statut Shiny.
-- **Filtres Avancés & Stackables** :
-  - Recherche par nom (insensible aux accents et tolérante aux fautes de frappe).
-  - Filtrage par Type élémentaire.
-  - Filtrage par statut (Manquants ou Obtenus).
-- **Tableau de Bord des Extradimensions** : Suivez votre progression zone par zone avec des compteurs en temps réel et des badges de complétion.
-- **Règles Spéciales** : Gestion automatique des Pokémon **Shiny-Locked** et **Alpha-Locked** (légendaires, etc.).
-- **Sprites Dynamiques** : Affichage des sprites officiels qui passent en version Shiny dès que vous validez la capture.
+## 🛠️ Tech Stack
 
-## 🛠️ Installation et Configuration
+*   **Framework**: Next.js 16 (App Router)
+*   **Language**: TypeScript
+*   **Database**: SQLite via Prisma 6
+*   **Styling**: Tailwind CSS
+*   **Data**: PokéAPI (Official types, names, and IDs)
 
-### Prérequis
-- [Node.js](https://nodejs.org/) (v18 ou supérieur)
-- npm (installé avec Node.js)
+## 🚀 Getting Started
 
-### Setup
-1. **Cloner le dépôt**
-   ```bash
-   git clone https://github.com/votre-username/ZA-ShinyDex.git
-   cd ZA-ShinyDex
-   ```
+### Prerequisites
+*   Node.js 22+
+*   npm
 
-2. **Installer les dépendances**
-   ```bash
-   npm install
-   ```
+### Installation
+1.  **Clone the repository**
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
+3.  **Setup the database**:
+    This will create the SQLite database, apply migrations, and seed the initial 390 Pokémon with their official multilingual names and locations.
+    ```bash
+    npm run setup
+    ```
 
-3. **Initialiser la base de données**
-   Cette commande crée la structure SQLite locale et peuple la base avec les données de base (progression à zéro).
-   ```bash
-   npm run setup
-   ```
+### Development
+Launch the development server:
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-4. **Lancer l'application**
-   ```bash
-   npm run dev
-   ```
-   L'application sera accessible sur [http://localhost:3000](http://localhost:3000).
+## 📂 Project Structure
 
-## 📖 Structure du Projet
-
-- `src/app/page.tsx` : Interface principale avec la logique de filtrage Fuzzy et le rendu des composants.
-- `prisma/schema.prisma` : Schéma de la base de données SQLite.
-- `prisma/seed_data.json` : Données sources propres pour l'initialisation.
-- `src/app/api/` : Points d'accès pour la recherche et la mise à jour de la progression.
-
-## 📝 Données
-Les données de localisation proviennent de [PokéBip](https://www.pokebip.com/). Les typages et sprites sont fournis par [PokéAPI](https://pokeapi.co/).
+*   `src/app/`: Next.js pages and API routes.
+*   `src/lib/`: Database configuration and translation engine.
+*   `prisma/`: Database schema and seed data.
+*   `public/`: Assets and official sigils.
 
 ---
-*Développé avec passion pour les dresseurs de Pokémon.*
+*Good luck with your hunt in the Hyperspaces of Luminous City!*
