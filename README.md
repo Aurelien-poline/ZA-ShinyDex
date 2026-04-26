@@ -2,7 +2,7 @@
 
 Un traqueur de collection complet pour **Pokémon Légendes : Z-A**, conçu pour suivre votre progression de capture Shiny et Shalpha à travers les différentes Extradimensions.
 
-![Shiny Dex Preview](public/preview.png) *(Note : remplacez ceci par une capture d'écran de votre application)*
+![Shiny Dex Preview](public/AppPreview.png)
 
 ## 🚀 Fonctionnalités
 
