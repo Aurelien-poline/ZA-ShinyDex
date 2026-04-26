@@ -14,9 +14,9 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    let { isShiny, isShalpha } = body;
+    const { isShiny, isShalpha } = body;
 
-    const data: any = {};
+    const data: { isShiny?: boolean; isShalpha?: boolean } = {};
     if (typeof isShalpha === 'boolean') {
         data.isShalpha = isShalpha;
         if (isShalpha) {
@@ -46,7 +46,8 @@ export async function PATCH(
     });
 
     return NextResponse.json(updated);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

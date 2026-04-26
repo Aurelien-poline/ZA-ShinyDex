@@ -2,10 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Fuse from 'fuse.js';
+import { translations, Locale } from '@/lib/translations';
 
 interface Pokemon {
   id: number;
   name: string;
+  nameEn: string | null;
+  nameJa: string | null;
   primaryType: string;
   secondaryType: string | null;
   isShiny: boolean;
@@ -14,7 +17,7 @@ interface Pokemon {
   shinySpriteUrl: string | null;
   nationalDexId: number | null;
   regionalDexId: number | null;
-  [key: string]: any;
+  [key: string]: string | number | boolean | null;
 }
 
 type SortOption = 'name' | 'national' | 'regional';
@@ -26,8 +29,10 @@ const SHINY_LOCKED_LIST = [
 ];
 
 export default function Home() {
+  const [locale, setLocale] = useState<Locale>('en');
+  const t = translations[locale];
+  
   const [allPokemon, setAllPokemon] = useState<Pokemon[]>([]);
-  const [filteredPokemon, setFilteredPokemon] = useState<Pokemon[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedType, setSelectedType] = useState('');
@@ -39,6 +44,29 @@ export default function Home() {
   const [sortBy, setSortBy] = useState<SortOption>('regional');
   const [allTypes, setAllTypes] = useState<string[]>([]);
   const [allEDs, setAllEDs] = useState<string[]>([]);
+
+  const getLocalizedName = useCallback((p: Pokemon) => {
+    if (locale === 'en' && p.nameEn) return p.nameEn;
+    if (locale === 'ja' && p.nameJa) return p.nameJa;
+    return p.name;
+  }, [locale]);
+
+  const getLocalizedType = useCallback((typeName: string) => {
+    return (t.types as Record<string, string>)[typeName] || typeName;
+  }, [t]);
+
+  const getLocalizedEDName = useCallback((edId: string) => {
+    const base = edId.replace('ED_', '');
+    const parts = base.split('_');
+    const typeName = parts[0];
+    const level = parts[1];
+    const isSpeciale = parts.length > 2;
+    
+    const localizedType = getLocalizedType(typeName);
+    if (edId === 'ED_Speciale_5') return `${t.ed_speciale} 5`;
+    if (isSpeciale) return `${localizedType} 5 (${t.ed_speciale})`;
+    return `${localizedType} ${level}`;
+  }, [getLocalizedType, t]);
 
   useEffect(() => {
     fetch('/api/filters')
@@ -80,19 +108,19 @@ export default function Home() {
 
             stats.push({
                 id: ed,
-                name: ed.replace('ED_', '').replace(/_/g, ' '),
+                name: getLocalizedEDName(ed),
                 shiny: shinyNeeded,
                 shalpha: shalphaNeeded
             });
         }
     });
     return stats.sort((a, b) => a.name.localeCompare(b.name));
-  }, [allPokemon, allEDs]);
+  }, [allPokemon, allEDs, getLocalizedEDName]);
 
   const fuse = useMemo(() => {
     return new Fuse(allPokemon, {
-      keys: ['name'],
-      threshold: 0.4,
+      keys: ['name', 'nameEn', 'nameJa'],
+      threshold: 0.2, // Stricter threshold (was 0.4)
       ignoreLocation: true,
       includeMatches: true,
       findAllMatches: true,
@@ -102,17 +130,29 @@ export default function Home() {
         if (typeof val === 'string') {
           return val.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         }
-        return val;
+        return (val?.toString() || "");
       }
     });
   }, [allPokemon]);
 
-  useEffect(() => {
+  const filteredPokemon = useMemo(() => {
     let result = [...allPokemon];
 
     if (search.trim()) {
-      const normalizedSearch = search.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      result = fuse.search(normalizedSearch).map(r => r.item);
+      const normalizedSearch = search.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      
+      const exactMatches = allPokemon.filter(p => {
+        const n = p.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const ne = (p.nameEn || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const nj = (p.nameJa || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return n.includes(normalizedSearch) || ne.includes(normalizedSearch) || nj.includes(normalizedSearch);
+      });
+
+      if (exactMatches.length > 0) {
+        result = exactMatches;
+      } else {
+        result = fuse.search(normalizedSearch).map(r => r.item);
+      }
     }
 
     if (selectedType) {
@@ -139,20 +179,20 @@ export default function Home() {
     if (obtainedShalpha) result = result.filter(p => p.isShalpha);
 
     result.sort((a, b) => {
-        if (sortBy === 'name') return a.name.localeCompare(b.name);
+        if (sortBy === 'name') return getLocalizedName(a).localeCompare(getLocalizedName(b));
         if (sortBy === 'national') return (a.nationalDexId || 9999) - (b.nationalDexId || 9999);
         if (sortBy === 'regional') return (a.regionalDexId || 9999) - (b.regionalDexId || 9999);
         return 0;
     });
 
-    setFilteredPokemon(result);
-  }, [search, selectedType, selectedEDs, missingShiny, missingShalpha, obtainedShiny, obtainedShalpha, sortBy, allPokemon, fuse, allEDs]);
+    return result;
+  }, [search, selectedType, selectedEDs, missingShiny, missingShalpha, obtainedShiny, obtainedShalpha, sortBy, allPokemon, fuse, allEDs, getLocalizedName]);
 
   const toggleStatus = async (id: number, field: 'isShiny' | 'isShalpha', currentValue: boolean) => {
     const newValue = !currentValue;
     setAllPokemon(prev => prev.map(p => {
         if (p.id === id) {
-            const update: any = { ...p, [field]: newValue };
+            const update: Pokemon = { ...p, [field]: newValue };
             if (field === 'isShalpha' && newValue === true) {
                 update.isShiny = true;
             }
@@ -190,16 +230,33 @@ export default function Home() {
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
             <div>
                 <h1 className="text-4xl font-black tracking-tighter text-white leading-none">
-                LEGENDS <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">ZA</span> SHINY DEX
+                {t.title.split(' ZA ')[0]} <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">ZA</span> {t.title.split(' ZA ')[1]}
                 </h1>
-                <p className="text-slate-500 text-xs font-bold mt-1 uppercase tracking-widest">Gestionnaire de collection et traqueur d'Extradimensions</p>
+                <p className="text-slate-500 text-xs font-bold mt-1 uppercase tracking-widest">{t.subtitle}</p>
             </div>
-            {!loading && (
-                <div className="hidden md:block text-right">
-                    <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest block mb-1">Base de données</span>
-                    <span className="text-blue-400 font-black text-xl leading-none">{allPokemon.length} Espèces</span>
+            <div className="flex items-center gap-8">
+                <div className="flex gap-2">
+                    {(['fr', 'en', 'ja'] as Locale[]).map((l) => (
+                        <button
+                            key={l}
+                            onClick={() => setLocale(l)}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                                locale === l 
+                                ? 'bg-blue-500 text-white' 
+                                : 'bg-slate-900 text-slate-500 hover:bg-slate-800 hover:text-slate-300'
+                            }`}
+                        >
+                            {l}
+                        </button>
+                    ))}
                 </div>
-            )}
+                {!loading && (
+                    <div className="hidden md:block text-right border-l border-slate-800 pl-8">
+                        <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest block mb-1">{t.db_status}</span>
+                        <span className="text-blue-400 font-black text-xl leading-none">{allPokemon.length} {t.species}</span>
+                    </div>
+                )}
+            </div>
         </div>
       </header>
 
@@ -210,10 +267,10 @@ export default function Home() {
         <aside className="w-72 flex-shrink-0 hidden lg:flex flex-col justify-center p-6 h-full relative z-40">
           <div className="max-h-full overflow-y-auto custom-scrollbar-hidden space-y-6 bg-slate-900/40 p-6 rounded-[2.5rem] border border-slate-800/50 shadow-xl">
             <section>
-              <label className="block text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2.5">Recherche</label>
+              <label className="block text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2.5">{t.filters}</label>
               <input
                 type="text"
-                placeholder="Nom du Pokémon..."
+                placeholder={t.search_placeholder}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none text-white font-medium transition-all text-sm"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -221,15 +278,15 @@ export default function Home() {
             </section>
 
             <section>
-              <label className="block text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2.5">Trier par</label>
+              <label className="block text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2.5">{t.sort_by}</label>
               <select
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none text-white font-medium transition-all appearance-none cursor-pointer text-sm"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortOption)}
               >
-                <option value="regional">Ordre Régional</option>
-                <option value="national">Ordre National</option>
-                <option value="name">Nom (A-Z)</option>
+                <option value="regional">{t.sort_regional}</option>
+                <option value="national">{t.sort_national}</option>
+                <option value="name">{t.sort_name} (A-Z)</option>
               </select>
             </section>
 
@@ -240,8 +297,8 @@ export default function Home() {
                 value={selectedType}
                 onChange={(e) => setSelectedType(e.target.value)}
               >
-                <option value="">Tous les types</option>
-                {allTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                <option value="">{t.type_all}</option>
+                {allTypes.map(tName => <option key={tName} value={tName}>{getLocalizedType(tName)}</option>)}
               </select>
             </section>
 
@@ -252,7 +309,7 @@ export default function Home() {
                 <div className="w-4 h-4 border-2 border-slate-700 rounded peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all flex items-center justify-center">
                     {missingShiny && <svg className="w-3 h-3 text-black font-bold" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M5 13l4 4L19 7" /></svg>}
                 </div>
-                <span className="text-xs font-bold text-slate-400 group-hover:text-white transition-colors">Shiny manquants</span>
+                <span className="text-xs font-bold text-slate-400 group-hover:text-white transition-colors">{t.status_missing_shiny}</span>
               </label>
 
               <label className="flex items-center gap-3 cursor-pointer group">
@@ -260,7 +317,7 @@ export default function Home() {
                 <div className="w-4 h-4 border-2 border-slate-700 rounded peer-checked:bg-yellow-600 peer-checked:border-yellow-600 transition-all flex items-center justify-center">
                     {obtainedShiny && <svg className="w-3 h-3 text-white font-bold" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M5 13l4 4L19 7" /></svg>}
                 </div>
-                <span className="text-xs font-bold text-slate-400 group-hover:text-white transition-colors">Shiny obtenus</span>
+                <span className="text-xs font-bold text-slate-400 group-hover:text-white transition-colors">{t.status_obtained_shiny}</span>
               </label>
 
               <label className="flex items-center gap-3 cursor-pointer group pt-1">
@@ -268,7 +325,7 @@ export default function Home() {
                 <div className="w-4 h-4 border-2 border-slate-700 rounded peer-checked:bg-red-500 peer-checked:border-red-500 transition-all flex items-center justify-center">
                     {missingShalpha && <svg className="w-3 h-3 text-white font-bold" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M5 13l4 4L19 7" /></svg>}
                 </div>
-                <span className="text-xs font-bold text-slate-400 group-hover:text-white transition-colors">Shalpha manquants</span>
+                <span className="text-xs font-bold text-slate-400 group-hover:text-white transition-colors">{t.status_missing_shalpha}</span>
               </label>
 
               <label className="flex items-center gap-3 cursor-pointer group">
@@ -276,7 +333,7 @@ export default function Home() {
                 <div className="w-4 h-4 border-2 border-slate-700 rounded peer-checked:bg-red-700 peer-checked:border-red-700 transition-all flex items-center justify-center">
                     {obtainedShalpha && <svg className="w-3 h-3 text-white font-bold" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M5 13l4 4L19 7" /></svg>}
                 </div>
-                <span className="text-xs font-bold text-slate-400 group-hover:text-white transition-colors">Shalpha obtenus</span>
+                <span className="text-xs font-bold text-slate-400 group-hover:text-white transition-colors">{t.status_obtained_shalpha}</span>
               </label>
             </section>
             
@@ -293,7 +350,7 @@ export default function Home() {
               }}
               className="w-full py-2.5 px-4 bg-slate-800 hover:bg-red-900/40 hover:text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
             >
-              Réinitialiser
+              {locale === 'fr' ? 'Réinitialiser' : locale === 'ja' ? 'リセット' : 'Reset'}
             </button>
           </div>
         </aside>
@@ -304,16 +361,17 @@ export default function Home() {
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-40 gap-4">
                 <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500"></div>
-                <span className="text-slate-500 font-bold uppercase tracking-widest text-xs">Synchronisation...</span>
+                <span className="text-slate-500 font-bold uppercase tracking-widest text-xs">{locale === 'fr' ? 'Synchronisation...' : locale === 'ja' ? '同期中...' : 'Syncing...'}</span>
                 </div>
             ) : (
                 <>
                 <div className="mb-6 flex justify-between items-end px-2">
-                    <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{filteredPokemon.length} Pokémon filtré(s)</span>
+                    <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{filteredPokemon.length} Pokémon {locale === 'fr' ? 'filtré(s)' : locale === 'ja' ? '表示中' : 'filtered'}</span>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-5 pb-20">
                     {filteredPokemon.map((p) => {
+                    const localizedName = getLocalizedName(p);
                     const isShinyLocked = SHINY_LOCKED_LIST.includes(p.name);
                     const activeEds = allEDs.filter(ed => p[ed]);
                     const isAlphaLocked = activeEds.length === 1 && activeEds[0] === 'ED_Speciale_5';
@@ -328,12 +386,12 @@ export default function Home() {
                                         <span className="text-[9px] font-black text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">#{p.nationalDexId || '???'}</span>
                                         <span className="text-[9px] font-black text-blue-500/70">REG #{p.regionalDexId || '???'}</span>
                                     </div>
-                                    <h3 className={`font-black text-white group-hover:text-blue-300 transition-colors leading-tight drop-shadow-sm whitespace-normal break-normal ${p.name.length > 15 ? 'text-lg' : 'text-xl'}`}>
-                                        {p.name}
+                                    <h3 className={`font-black text-white group-hover:text-blue-300 transition-colors leading-tight drop-shadow-sm whitespace-normal break-normal ${localizedName.length > 15 ? 'text-lg' : 'text-xl'}`}>
+                                        {localizedName}
                                     </h3>
                                     <div className="flex flex-wrap gap-2 mt-2">
-                                        <span className="text-[9px] font-black uppercase tracking-tighter bg-slate-700 px-2 py-0.5 rounded-lg text-slate-100 border border-slate-600">{p.primaryType}</span>
-                                        {p.secondaryType && <span className="text-[9px] font-black uppercase tracking-tighter bg-slate-700 px-2 py-0.5 rounded-lg text-slate-100 border border-slate-600">{p.secondaryType}</span>}
+                                        <span className="text-[9px] font-black uppercase tracking-tighter bg-slate-700 px-2 py-0.5 rounded-lg text-slate-100 border border-slate-600">{getLocalizedType(p.primaryType)}</span>
+                                        {p.secondaryType && <span className="text-[9px] font-black uppercase tracking-tighter bg-slate-700 px-2 py-0.5 rounded-lg text-slate-100 border border-slate-600">{getLocalizedType(p.secondaryType)}</span>}
                                     </div>
                                 </div>
                                 
@@ -341,7 +399,7 @@ export default function Home() {
                                     {p.spriteUrl && (
                                         <img 
                                             src={p.isShiny ? (p.shinySpriteUrl || p.spriteUrl) : p.spriteUrl} 
-                                            alt={p.name}
+                                            alt={localizedName}
                                             className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
                                             loading="lazy"
                                         />
@@ -366,7 +424,7 @@ export default function Home() {
                                 <div className="flex gap-3">
                                     {isShinyLocked ? (
                                         <div className="flex-1 py-2 px-3 rounded-xl border-2 border-slate-800 bg-slate-950/50 text-slate-500 text-[9px] font-black uppercase tracking-widest text-center flex items-center justify-center gap-2">
-                                            <span>SHINY LOCKED</span>
+                                            <span>{t.shiny_locked}</span>
                                         </div>
                                     ) : (
                                         <>
@@ -402,14 +460,14 @@ export default function Home() {
                                 </div>
 
                                 <div className="bg-slate-950/80 rounded-2xl p-4 border border-slate-800 min-h-[80px]">
-                                    <p className="text-[9px] uppercase tracking-widest text-slate-500 font-black mb-2">Localisations</p>
+                                    <p className="text-[9px] uppercase tracking-widest text-slate-500 font-black mb-2">{t.locations}</p>
                                     <div className="flex flex-wrap gap-1.5">
                                     {getEDsForPokemon(p).map(ed => (
                                         <span key={ed} className="text-[9px] font-bold bg-slate-800 text-slate-200 px-2 py-0.5 rounded-full border border-slate-700">
-                                            {ed.replace('ED_', '').replace(/_/g, ' ')}
+                                            {getLocalizedEDName(ed)}
                                         </span>
                                     ))}
-                                    {getEDsForPokemon(p).length === 0 && <span className="text-[9px] text-slate-600 font-bold italic">Évolution uniquement</span>}
+                                    {getEDsForPokemon(p).length === 0 && <span className="text-[9px] text-slate-600 font-bold italic">{locale === 'fr' ? 'Évolution uniquement' : locale === 'ja' ? '進化のみ' : 'Evolution only'}</span>}
                                     </div>
                                 </div>
                             </div>
@@ -421,7 +479,7 @@ export default function Home() {
                 {!loading && filteredPokemon.length === 0 && (
                     <div className="text-center py-40">
                     <div className="text-6xl mb-4">🔍</div>
-                    <h3 className="text-xl font-black text-slate-400">Aucun résultat trouvé</h3>
+                    <h3 className="text-xl font-black text-slate-400">{locale === 'fr' ? 'Aucun résultat trouvé' : locale === 'ja' ? '結果が見つかりませんでした' : 'No results found'}</h3>
                     </div>
                 )}
                 </>
@@ -433,8 +491,8 @@ export default function Home() {
         <aside className="w-80 flex-shrink-0 hidden lg:flex flex-col justify-center p-6 h-full relative z-40">
           <div className="bg-slate-900/50 rounded-[2.5rem] border border-slate-800/50 backdrop-blur-sm flex flex-col max-h-full overflow-hidden shadow-2xl">
             <div className="p-5 border-b border-slate-800/50 bg-slate-900/80 rounded-t-[2.5rem]">
-                <h2 className="text-sm font-black uppercase tracking-widest text-white">Extradimensions</h2>
-                <p className="text-[10px] text-slate-500 font-bold mt-1">Sélecteur de zones & Progression</p>
+                <h2 className="text-sm font-black uppercase tracking-widest text-white">{t.extradimensions}</h2>
+                <p className="text-[10px] text-slate-500 font-bold mt-1">{locale === 'fr' ? 'Sélecteur de zones & Progression' : locale === 'ja' ? 'エリア選択と進捗' : 'Zone Selector & Progress'}</p>
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar-hidden">
