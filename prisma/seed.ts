@@ -5,7 +5,11 @@ import path from 'path';
 const prisma = new PrismaClient();
 
 async function main() {
-  const dataPath = path.join(__dirname, 'seed_data.json');
+  let dataPath = path.join(__dirname, 'current_data_dump.json');
+  if (!fs.existsSync(dataPath)) {
+    dataPath = path.join(__dirname, 'seed_data.json');
+  }
+  
   if (!fs.existsSync(dataPath)) {
     console.error("Seed data file not found!");
     process.exit(1);

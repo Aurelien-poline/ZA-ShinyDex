@@ -10,10 +10,8 @@
     "setup": "npx prisma migrate dev && npx prisma db seed"
   },
   "dependencies": {
-    "@prisma/adapter-better-sqlite3": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "axios": "^1.15.2",
-    "better-sqlite3": "^12.9.0",
     "cheerio": "^1.2.0",
     "fuse.js": "^7.3.0",
     "next": "16.2.4",
@@ -22,7 +20,6 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
