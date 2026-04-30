@@ -20,10 +20,11 @@ async function main() {
   console.log(`Seeding ${pokemon.length} Pokémon entries...`);
 
   for (const p of pokemon) {
+    const { isShiny, isShalpha, ...pokemonData } = p;
     await prisma.pokemon.upsert({
       where: { name: p.name },
-      update: p,
-      create: p,
+      update: pokemonData,
+      create: pokemonData,
     });
   }
 

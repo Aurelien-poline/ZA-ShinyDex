@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSession, signIn, signOut } from 'next-auth/react';
 import Fuse from 'fuse.js';
 import { translations, Locale } from '@/lib/translations';
 
@@ -29,6 +30,7 @@ const SHINY_LOCKED_LIST = [
 ];
 
 export default function Home() {
+  const { data: session, status } = useSession();
   const [locale, setLocale] = useState<Locale>('en');
   const t = translations[locale];
   
@@ -44,6 +46,7 @@ export default function Home() {
   const [sortBy, setSortBy] = useState<SortOption>('regional');
   const [allTypes, setAllTypes] = useState<string[]>([]);
   const [allEDs, setAllEDs] = useState<string[]>([]);
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
 
   const getLocalizedName = useCallback((p: Pokemon) => {
     if (locale === 'en' && p.nameEn) return p.nameEn;
@@ -77,19 +80,73 @@ export default function Home() {
       });
   }, []);
 
+  const LOCAL_STORAGE_KEY = 'za_shinydex_progress';
+
   const fetchAllPokemon = useCallback(() => {
+    if (status === 'loading') return; // Wait for auth to settle
+
     setLoading(true);
     fetch('/api/pokemon')
       .then(res => res.json())
       .then(data => {
-        setAllPokemon(data);
+        if (Array.isArray(data)) {
+          if (status === 'authenticated') {
+            setAllPokemon(data);
+          } else {
+            // Guest Mode: Only if explicitly unauthenticated
+            const localData = typeof window !== 'undefined' ? localStorage.getItem(LOCAL_STORAGE_KEY) : null;
+            const localProgress = localData ? JSON.parse(localData) : {};
+            
+            const merged = data.map(p => ({
+              ...p,
+              isShiny: localProgress[p.id]?.isShiny || false,
+              isShalpha: localProgress[p.id]?.isShalpha || false,
+            }));
+            setAllPokemon(merged);
+          }
+        }
         setLoading(false);
       });
-  }, []);
+  }, [status]);
 
   useEffect(() => {
     fetchAllPokemon();
   }, [fetchAllPokemon]);
+
+  // Migration Effect: Check for local data and ask user
+  useEffect(() => {
+    if (status === 'authenticated') {
+      const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (localData) {
+        const progress = JSON.parse(localData);
+        if (Object.keys(progress).length > 0) {
+          setShowMigrationModal(true);
+        }
+      }
+    }
+  }, [status]);
+
+  const handleMigrate = async () => {
+    const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (!localData) return;
+
+    try {
+      const progress = JSON.parse(localData);
+      const res = await fetch('/api/pokemon/migrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ progress })
+      });
+
+      if (res.ok) {
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
+        setShowMigrationModal(false);
+        fetchAllPokemon();
+      }
+    } catch (err) {
+      console.error('Migration failed:', err);
+    }
+  };
 
   const activeEDStats = useMemo(() => {
     const stats: Array<{ id: string, name: string, shiny: number, shalpha: number }> = [];
@@ -187,9 +244,12 @@ export default function Home() {
 
     return result;
   }, [search, selectedType, selectedEDs, missingShiny, missingShalpha, obtainedShiny, obtainedShalpha, sortBy, allPokemon, fuse, allEDs, getLocalizedName]);
-
   const toggleStatus = async (id: number, field: 'isShiny' | 'isShalpha', currentValue: boolean) => {
+    if (status === 'loading') return; // Prevent interaction during auth settle
+
     const newValue = !currentValue;
+    
+    // Update local state immediately (Optimistic)
     setAllPokemon(prev => prev.map(p => {
         if (p.id === id) {
             const update: Pokemon = { ...p, [field]: newValue };
@@ -201,15 +261,35 @@ export default function Home() {
         return p;
     }));
 
-    try {
-        await fetch(`/api/pokemon/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ [field]: newValue })
-        });
-    } catch (e) {
-        console.error("Failed to update", e);
-        fetchAllPokemon();
+    if (status === 'authenticated') {
+      try {
+          const res = await fetch(`/api/pokemon/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ [field]: newValue })
+          });
+
+          if (!res.ok) {
+            console.error('Update failed:', res.status);
+            fetchAllPokemon(); // Revert
+          }
+      } catch (e) {
+          console.error("Failed to update", e);
+          fetchAllPokemon();
+      }
+    } else {
+      // Guest Mode: Save to localStorage
+      const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const localProgress = localData ? JSON.parse(localData) : {};
+      
+      const p = allPokemon.find(x => x.id === id);
+      if (p) {
+        localProgress[id] = {
+          isShiny: field === 'isShiny' ? newValue : (field === 'isShalpha' && newValue ? true : p.isShiny),
+          isShalpha: field === 'isShalpha' ? newValue : p.isShalpha
+        };
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(localProgress));
+      }
     }
   };
 
@@ -266,6 +346,44 @@ export default function Home() {
         {/* Left Sidebar: Filters */}
         <aside className="w-72 flex-shrink-0 hidden lg:flex flex-col justify-center p-6 h-full relative z-40">
           <div className="max-h-full overflow-y-auto custom-scrollbar-hidden space-y-6 bg-slate-900/40 p-6 rounded-[2.5rem] border border-slate-800/50 shadow-xl">
+            {/* User Profile / Auth */}
+            <section className="pb-4 border-b border-slate-800">
+              <label className="block text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2.5">
+                {status === 'authenticated' ? 'Account' : 'Login'}
+              </label>
+              {status === 'authenticated' ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    {session.user?.image && (
+                      <img src={session.user.image} alt="User" className="w-8 h-8 rounded-full" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-white truncate">{session.user?.name || 'User'}</p>
+                      <button 
+                        onClick={() => signOut()}
+                        className="text-[9px] font-bold text-red-500 hover:text-red-400 uppercase tracking-tighter"
+                      >
+                        Sign Out
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3">
+                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Local Guest Mode</p>
+                    <p className="text-[9px] text-slate-500 font-bold leading-tight">Your progress is saved locally in this browser. Sign in to sync across devices.</p>
+                  </div>
+                  <button 
+                    onClick={() => signIn('google')}
+                    className="w-full bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-black uppercase tracking-widest py-3 rounded-xl transition-all"
+                  >
+                    Sign in with Google
+                  </button>
+                </div>
+              )}
+            </section>
+
             <section>
               <label className="block text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2.5">{t.filters}</label>
               <input
@@ -486,6 +604,38 @@ export default function Home() {
             )}
           </div>
         </main>
+
+        {/* Migration Modal */}
+        {showMigrationModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm">
+            <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl animate-in fade-in zoom-in duration-300">
+              <div className="text-center">
+                <div className="text-5xl mb-6">📦</div>
+                <h2 className="text-2xl font-black text-white mb-3">Migrate Local Progress?</h2>
+                <p className="text-slate-400 font-medium mb-8">
+                  We found Pokémon catches saved in your browser. Would you like to merge them with your cloud account?
+                </p>
+                <div className="flex flex-col gap-3">
+                  <button 
+                    onClick={handleMigrate}
+                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest py-4 rounded-2xl transition-all shadow-lg shadow-blue-500/20"
+                  >
+                    Yes, Merge Progress
+                  </button>
+                  <button 
+                    onClick={() => {
+                      localStorage.removeItem(LOCAL_STORAGE_KEY);
+                      setShowMigrationModal(false);
+                    }}
+                    className="w-full bg-slate-800 hover:bg-red-900/40 hover:text-red-400 text-slate-400 font-black uppercase tracking-widest py-4 rounded-2xl transition-all"
+                  >
+                    No, Discard Local Data
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Right Sidebar: Extradimensions */}
         <aside className="w-80 flex-shrink-0 hidden lg:flex flex-col justify-center p-6 h-full relative z-40">

@@ -7,13 +7,71 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// --- Auth.js Models ---
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  progress      UserProgress[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --- Pokémon Models ---
+
 model Pokemon {
   id                       Int     @id @default(autoincrement())
   name                     String  @unique
   primaryType              String
   secondaryType            String?
-  isShiny                  Boolean @default(false)
-  isShalpha                Boolean @default(false)
+  
+  // Static Assets
+  shinySpriteUrl           String?
+  spriteUrl                String?
+  nationalDexId            Int?
+  regionalDexId            Int?
+  nameEn                   String?
+  nameJa                   String?
+
+  // Extra Dimensions Logic (Static per Pokémon)
   ED_Acier_1               Boolean @default(false)
   ED_Acier_2               Boolean @default(false)
   ED_Acier_3               Boolean @default(false)
@@ -105,10 +163,20 @@ model Pokemon {
   ED_Électrik_3           Boolean @default(false)
   ED_Électrik_4           Boolean @default(false)
   ED_Électrik_5_Speciale  Boolean @default(false)
-  shinySpriteUrl           String?
-  spriteUrl                String?
-  nationalDexId            Int?
-  regionalDexId            Int?
-  nameEn                   String?
-  nameJa                   String?
+
+  userProgress             UserProgress[]
+}
+
+// Tracks individual user's collection progress
+model UserProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  pokemonId   Int
+  isShiny     Boolean  @default(false)
+  isShalpha   Boolean  @default(false)
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pokemon     Pokemon  @relation(fields: [pokemonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pokemonId])
 }

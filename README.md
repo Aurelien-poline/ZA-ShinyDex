@@ -17,7 +17,8 @@ A professional-grade collection manager and **Hyperspace Tracker** designed for 
 
 *   **Framework**: Next.js 16 (App Router)
 *   **Language**: TypeScript
-*   **Database**: SQLite via Prisma 6
+*   **Database**: PostgreSQL via Prisma 6
+*   **Containerization**: Docker & Docker Compose
 *   **Styling**: Tailwind CSS
 *   **Data**: PokéAPI (Official types, names, and IDs)
 
@@ -26,6 +27,7 @@ A professional-grade collection manager and **Hyperspace Tracker** designed for 
 ### Prerequisites
 *   Node.js 22+
 *   npm
+*   Docker & Docker Compose
 
 ### Installation
 1.  **Clone the repository**
@@ -33,8 +35,18 @@ A professional-grade collection manager and **Hyperspace Tracker** designed for 
     ```bash
     npm install
     ```
-3.  **Setup the database**:
-    This will create the SQLite database, apply migrations, and seed the initial 390 Pokémon with their official multilingual names and locations.
+3.  **Configure Environment**:
+    Create a `.env` file in the root directory:
+    ```env
+    DATABASE_URL="postgresql://postgres:postgres@localhost:5432/shinydex"
+    ```
+4.  **Start the Database**:
+    Launch the PostgreSQL container using Docker Compose:
+    ```bash
+    docker compose up -d
+    ```
+5.  **Setup the database**:
+    This will apply migrations and seed the initial 390 Pokémon.
     ```bash
     npm run setup
     ```
@@ -45,6 +57,20 @@ Launch the development server:
 npm run dev
 ```
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## 🐳 Docker Integration
+
+The project includes a `docker-compose.yml` file to quickly spin up a PostgreSQL instance:
+
+*   **Image**: `postgres:15-alpine`
+*   **Default Port**: `5432`
+*   **Credentials**: Defined in `docker-compose.yml` (default `postgres`/`postgres`)
+*   **Persistence**: Data is persisted in a Docker volume named `postgres_data`.
+
+To stop the database:
+```bash
+docker compose down
+```
 
 ## 📂 Project Structure
 
